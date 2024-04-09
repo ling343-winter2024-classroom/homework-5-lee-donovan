@@ -5,3 +5,29 @@ format:
   html:
     embed-resources: true
 ---
+
+```{r}
+#| warning: false
+
+library(tidyverse)
+library(here)
+```
+## Background
+
+Information about the background
+
+## Data Dictionary
+
+
+## Importing the Data
+```{r}
+here::i_am("analysis/hw05-lee-donovan.qmd")
+
+d <- read.csv(here("data/delong maze 40Ss.csv"), 
+              header = 0, sep = ",", comment.char = "#", strip.white = T,
+              col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"))
+
+```
+
+
+
