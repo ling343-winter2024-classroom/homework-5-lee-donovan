@@ -10,14 +10,48 @@ format:
 #| warning: false
 
 library(tidyverse)
+library(kableExtra)
 library(here)
 ```
 ## Background
 
-Information about the background
+
 
 ## Data Dictionary
 
+```{r}
+data <- tibble::tribble(
+  ~variable, ~summary,
+  "Index", "",
+  "Time", "the time recorded when the experiment took place",
+  "Counter", "",
+  "Hash", "",
+  "Owner", "a conditional that determines if the participant is the experiment owner",
+  "Controller", "",
+  "Item", "",
+  "Element", "",
+  "Type", "",
+  "Group", "",
+  "FieldName", "the field names shown for the Form information of the participant",
+  "Value", "the field values shown for the Form information of the participant",
+  "WordNum", "the position of the word in the experiment sentence",
+  "Word", "the original word of the sentence",
+  "Alt", "the alternative word for the sentence",
+  "WordOn", "a conditional that determines if the current word is the original or the alternative (0 = original, 1 = alternative)",
+  "CorrWord", "a conditional that determines if the participant guessed if the word was correct or incorrect",
+  "RT", "",
+  "Sent", "the entire original sentence",
+  "TotalTime", "",
+  "Question", "",
+  "Resp", "",
+  "Acc", "",
+  "RespRT", ""
+)
+
+data |>
+  kbl() |>
+  kable_styling(bootstrap_options = c("striped"))
+```
 
 ## Importing the Data
 ```{r}
