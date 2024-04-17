@@ -25,16 +25,16 @@ In this study, participants were given these maze tasks and their reaction times
 ```{r}
 dataDict <- tibble::tribble(
   ~variable, ~summary,
-  "Index", "",
+  "Index", "the index for the experiments of each participant",
   "Time", "the time recorded when the experiment took place",
-  "Counter", "",
+  "Counter", "a separator for each participants' data",
   "Hash", "the hash value of the participant",
   "Owner", "a conditional that determines if the participant is the experiment owner",
   "Controller", "the type of instruction given to the participant (Form, Maze, and Question)",
   "Item", "the id of the sentence given",
   "Element", "determines if there is a sentence or question given",
   "Type", "the type of maze task given",
-  "Group", "",
+  "Group", "the original, derived sentence of the Item sentences",
   "FieldName", "the field names shown for the Form information of the participant",
   "Value", "the field values shown for the Form information of the participant",
   "WordNum", "the position of the word in the experiment sentence",
@@ -52,8 +52,9 @@ dataDict <- tibble::tribble(
 )
 
 dataDict |>
-  kbl() |>
-  kable_styling(bootstrap_options = c("striped"))
+  gt() |>
+  opt_row_striping() |>
+  opt_stylize(style = 2, color = "red", add_row_striping = TRUE)
 ```
 ## Importing the Data
 ```{r}
@@ -63,73 +64,140 @@ df_all <- read.csv(here("data/delong maze 40Ss.csv"),
               header = 1, sep = ",", comment.char = "#", strip.white = T,
               col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"))
 ```
-
-```{r}
-df_rt <- df_all |> 
-  filter(Controller == "Maze" & !str_detect(Type, "prac")) |> 
-  select(1:10, 13:20) |> 
-  separate(col = Type, 
-           into = c("exp", "item", "expect", "position", "pos", 
-                    "cloze", "art.cloze", "n.cloze"), 
-           sep = "\\.", convert = TRUE, fill = "right") |> 
-  mutate(WordNum = as.numeric(WordNum),
-         Acc = as.numeric(as.character(recode(CorrWord, yes = "1", no = "0"))),
-         n.cloze.scale =  scale(n.cloze), 
-         art.cloze.scale = scale(art.cloze)) |> 
-  mutate(across(where(is.character), as.factor)) |> 
-  filter(item != 29) |> 
-  filter(Hash != "9dAvrH0+R6a0U5adPzZSyA")
-
-rt.s <- df_rt 
-
-rt.s$rgn.fix <- rt.s$WordNum - rt.s$pos + 1
-rt.s$word.num.z <- scale(rt.s$WordNum)
-rt.s$word.len <- nchar(as.character(rt.s$Word))
-rt.s$Altword.len <- nchar(as.character(rt.s$Alt))
-# simplying by using dummy/treatment coding instead of sum coding
-# 'expected' will be reference level
-#contrasts(rt.s$expect) <- c(-.5,.5)
-
-rt.s$item.expect <- paste(rt.s$item, rt.s$expect, sep=".")
-rt.s.filt <- rt.s[rt.s$Hash != "gyxidIf0fqXBM7nxg2K7SQ" & rt.s$Hash != "f8dC3CkleTBP9lUufzUOyQ",]
-
-rgn.rt.raw <- rt.s.filt %>%
-  filter(rgn.fix > -4 & rgn.fix < 5) %>%
-  filter(Acc == 1) %>%
-  group_by(rgn.fix, expect) %>%
-  summarize(n = n(), subj = length(unique(Hash)), rt = mean(RT), 
-            sd = sd(RT), stderr = sd / sqrt(subj)) %>%
-  as.data.frame()
-rgn.rt.raw$rgn <- as.factor(recode(rgn.rt.raw$rgn.fix, "-3"="CW-3", "-2"="CW-2", "-1"="CW-1", "0"="art", "1"="n","2"="CW+1", "3"="CW+2", "4"="CW+3"))
-rgn.rt.raw$rgn <- ordered(rgn.rt.raw$rgn, levels = c("CW-3", "CW-2", "CW-1", "art", "n", "CW+1", "CW+2", "CW+3"))
-
-rt.s.filt |> 
-  filter(rgn.fix == 0) |> 
-  group_by(Hash, expect) |> 
-  summarize(RT = mean(RT, na.rm = TRUE)) |> 
-  group_by(expect) |> 
-  summarize(RT = mean(RT, na.rm = TRUE)) |>
-  gt() |> 
-  fmt_number(decimals = 0)
-```
 ## Exploring the Data
 Before we are able to fully explore this data, there is something we must remove. According to the article that this data comes from, there was an error with Item 29 that renders it useless for further analysis, so we will remove any rows that contain it from our dataframe.
 ```{r}
+df_edit <- df_all |>
+  filter(Item != 29)
 
+(count(df_all) - count(df_edit))$n
 ```
+After removing the faulty item, we can see that there are now 176 less rows in data.
+
 
 To better understand this data, we ought to determine the number of participants whose data was recorded. The 'Hash' variable should determine the number of participants.
 ```{r}
-d |>
+numPart <- df_edit |>
   distinct(Hash) |>
   count()
-
-df_all |>
-  count(Element)
-df_rt |>
-  distinct(Item)
+numPart$n
 ```
 From this, we can see that there are 39 participants
 
 
-Since this study involves measuring the reaction times of the participants in response to expected/unexpected words, we should follow a similar path.
+Since this study involves measuring the reaction times of the participants in response to expected/unexpected words, we should follow a similar path. In order to get the critical data, we would need to filter out any rows that aren't the main maze tasks (e.g. Form and Practice). We will also have to separate the values in the Type variable into separate columns: experiment #, item #, expectation, position, position #, cloze, article cloze, noun cloze. This will be followed by a general tidy-up of the data frame to ensure that the variables are the right type.
+```{r}
+df_rt <- df_edit |>
+  filter(Controller == "Maze") |>
+  filter(Type != "practice") |>
+  separate_wider_delim(cols = Type, delim = ".", names = c("experiment", "item", "expectation", "position", "pos", "cloze", "art.cloze", "n.cloze")) |>
+  select(!c(FieldName, Value, Question, Resp, Acc, RespRT)) |>
+  mutate(WordNum = as.numeric(WordNum),
+         CorrWord = as.factor(if_else(CorrWord == "yes", 1, 0))) |>
+  mutate(across(where(is.character), as.factor))
+```
+Now with our tidied-up data frame, we can get the mean expected and unexpected reaction times of the entire study:
+```{r}
+df_rt |>
+  filter(CorrWord == 1) |>
+  group_by(expectation) |>
+  summarise(mean = mean(RT, na.rm = TRUE)) |>
+  gt() |>
+  opt_row_striping() |>
+  opt_stylize(style = 2, color = "red", add_row_striping = TRUE) |>
+  fmt_number(decimals = 2)
+```
+Here, it looks like the unexpected RT is higher than the expected RT by around 13 seconds (meaning that it took longer to react), which is something that could make sense.
+
+
+Looking at the article that this data is derived from, we can see a figure that showcases the deviations of the reaction times of the unexpected and the expected in a specific section. In order for us to do the same, we would have to create this critical section which contains the article, the noun, and the three words that proceed/precede them. This can be done by subtracting the current word position and the position of the tested word as well as adding one. We can then filter out the words that do not fit into this critical section. As a addendum, a participant's data is removed due to their accuracy being an outlier.
+```{r}
+df_figure <- df_rt |>
+  # this is to remove a participant whose accuracy was an outlier
+  filter(Hash != "9dAvrH0+R6a0U5adPzZSyA") |>
+  mutate(fix = (WordNum - as.numeric(pos)) + 1) |>
+  filter(fix > -4 & fix < 5) |>
+  filter(CorrWord == 1) |>
+  group_by(fix, expectation) |>
+  summarize(n = n(), subj = length(unique(Hash)), rt = mean(RT), 
+            sd = sd(RT), stderr = sd / sqrt(subj))
+df_figure$rgn <- c("CW-3", "CW-3", "CW-2", "CW-2", "CW-1", "CW-1", "article", "article", "noun", "noun", "CW+1", "CW+1", "CW+2", "CW+2", "CW+3", "CW+3")
+
+df_figure |>
+  ggplot(aes(x = rgn, y = rt, shape = expectation)) + 
+  geom_point(size = 2) +
+  geom_line(aes(group = expectation)) +
+  geom_errorbar(aes(ymin = rt - stderr, ymax = rt + stderr, width = 0.15)) +
+  scale_shape_manual(values = c(1, 19)) +
+  scale_x_discrete(limits = c("CW-3", "CW-2", "CW-1", "article", "noun", "CW+1", "CW+2", "CW+3")) +
+  labs(x = "Word",
+       y = "Reaction Time")
+```
+```{r}
+df_figure |>
+  ungroup() |>
+  select(rt, rgn, expectation) |>
+  pivot_wider(names_from = rgn, values_from = rt) |>
+  gt()
+```
+Looking at these two figures, we can see some interesting (and perhaps misguided) things. One such thing being that the standard deviation for CW-3 is far more greater than the others and that each word forward has a decreasing standard deviation. We can also see that CW-3 has the highest gap between the expected and unexpected points. 
+
+
+Comparing this to the article's Figures, we can see some drastic differences pertaining to the general shape, the standard deviations, etc. So there is something amiss here in the data that is causing it. It could possibly be some errant data that was not tidied enough or should have not been included, or it could be that crucial data was omitted during the tidying process. (idk this is really difficult).
+
+
+Perhaps there is more to glean from the reaction times if we are to look at the personal data of each participants such as their age.
+```{r}
+df_age <- df_edit |>
+  filter(FieldName == "age") |>
+  mutate(Value = as.numeric(Value))
+
+df_age |>
+  summarise(mean = mean(Value, na.rm = TRUE), min = min(Value), max = max(Value), sd = sd(Value)) |>
+  pivot_longer(cols = c(mean, min, max, sd), names_to = "variable") |>
+  gt() |>
+  opt_row_striping() |>
+  opt_stylize(style = 2, color = "red", add_row_striping = TRUE) |>
+  fmt_number(decimals = 2)
+```
+From here, we can see the average age of all the participants, the youngest participant, and the eldest participant. We can use this to see the reaction times of those who are below the average and those above it.
+```{r}
+df_age |>
+  filter(Value < mean(Value)) |>
+  select(Hash) |>
+  left_join(df_edit, join_by(Hash == Hash)) |>
+  filter(Controller == "Maze") |>
+  filter(Type != "practice") |>
+  separate_wider_delim(cols = Type, delim = ".", names = c("experiment", "item", "expectation", "position", "pos", "cloze", "art.cloze", "n.cloze")) |>
+  select(!c(FieldName, Value, Question, Resp, Acc, RespRT)) |>
+  mutate(WordNum = as.numeric(WordNum),
+         CorrWord = as.factor(if_else(CorrWord == "yes", 1, 0))) |>
+  mutate(across(where(is.character), as.factor)) |>
+  filter(CorrWord == 1) |>
+  group_by(expectation) |>
+  summarise(mean = mean(RT, na.rm = TRUE)) |>
+  gt() |>
+  opt_row_striping() |>
+  opt_stylize(style = 2, color = "red", add_row_striping = TRUE)
+```
+
+```{r}
+df_age |>
+  filter(Value > mean(Value)) |>
+  select(Hash) |>
+  left_join(df_edit, join_by(Hash == Hash)) |>
+  filter(Controller == "Maze") |>
+  filter(Type != "practice") |>
+  separate_wider_delim(cols = Type, delim = ".", names = c("experiment", "item", "expectation", "position", "pos", "cloze", "art.cloze", "n.cloze")) |>
+  select(!c(FieldName, Value, Question, Resp, Acc, RespRT)) |>
+  mutate(WordNum = as.numeric(WordNum),
+         CorrWord = as.factor(if_else(CorrWord == "yes", 1, 0))) |>
+  mutate(across(where(is.character), as.factor)) |>
+  filter(CorrWord == 1) |>
+  group_by(expectation) |>
+  summarise(mean = mean(RT, na.rm = TRUE)) |>
+  gt() |>
+  opt_row_striping() |>
+  opt_stylize(style = 2, color = "red", add_row_striping = TRUE)
+```
+Comparing these two, we can see the higher gap in the older participants over the younger participants (35 v. 3). We can also see that the older participant's unexpected reaction time is higher than the expected reaction time, something that we have stated appears to be make sense, yet the opposite is apparent in the younger participants' data. However, the average response times for the older participants is higher than those of the younger participants which is something that also makes sense (~800 v. ~900).
